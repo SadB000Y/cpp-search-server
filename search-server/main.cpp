@@ -125,9 +125,9 @@ private:
         map<int, double> id_to_rel;
         for (const auto& word : query_words.plus_words) {
             if (documents_.count(word)){
-                double def = log(static_cast<double>(document_count_)/static_cast<double>(word_to_document_freqs_.at(word).size()));
+                double idf = log(static_cast<double>(document_count_)/static_cast<double>(word_to_document_freqs_.at(word).size()));
                 for (const auto& [id, freac] : word_to_document_freqs_.at(word)){
-                    id_to_rel[id] += freac * def;
+                    id_to_rel[id] += freac * idf;
                 };
             }
         };
