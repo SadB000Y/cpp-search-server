@@ -60,10 +60,11 @@ public:
     void AddDocument(int document_id, const string& document) {
         const vector<string> words = SplitIntoWordsNoStop(document);
         ++document_count_;
+        double TF = 1.0 / words.size();
         for (const string& word : words){
             documents_[word].insert(document_id);
-            word_to_document_freqs_[word][document_id] += 1.0 / words.size();
-        };   
+            word_to_document_freqs_[word][document_id] += TF;
+        };
     }
 
     vector<Document> FindTopDocuments(const string& raw_query) const {
@@ -81,7 +82,7 @@ public:
     }
 
 private:
-    
+
     struct Query {
         set<string> plus_words;
         set<string> min_words;
@@ -90,9 +91,9 @@ private:
     map<string, set<int>> documents_;
 
     set<string> stop_words_;
-    
+
     map<string, map<int, double>> word_to_document_freqs_;
-    
+
     int document_count_ = 0;
 
     bool IsStopWord(const string& word) const {
@@ -108,7 +109,7 @@ private:
         }
         return words;
     }
-    
+
     Query ParseQuery(const string& text) const {
         Query query_words;
         for (const string& word : SplitIntoWordsNoStop(text)) {
@@ -131,7 +132,7 @@ private:
                 };
             }
         };
-        
+
         for (const auto& word : query_words.min_words) {
             if (!documents_.count(word)) {
                 for (const auto& [words, id] : documents_)
@@ -145,7 +146,7 @@ private:
         return matched_documents;
     };
 
-}; 
+};
 
 SearchServer CreateSearchServer() {
     SearchServer search_server;
