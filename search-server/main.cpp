@@ -62,7 +62,6 @@ public:
         ++document_count_;
         double TF = 1.0 / words.size();
         for (const string& word : words){
-            documents_[word].insert(document_id);
             word_to_document_freqs_[word][document_id] += TF;
         };
     }
@@ -87,8 +86,6 @@ private:
         set<string> plus_words;
         set<string> min_words;
     };
-
-    map<string, set<int>> documents_;
 
     set<string> stop_words_;
 
@@ -125,7 +122,7 @@ private:
         vector<Document> matched_documents;
         map<int, double> id_to_rel;
         for (const auto& word : query_words.plus_words) {
-            if (documents_.count(word)){
+            if (word_to_document_freqs_.count(word)){
                 double idf = log(static_cast<double>(document_count_)/static_cast<double>(word_to_document_freqs_.at(word).size()));
                 for (const auto& [id, freac] : word_to_document_freqs_.at(word)){
                     id_to_rel[id] += freac * idf;
@@ -134,11 +131,9 @@ private:
         };
 
         for (const auto& word : query_words.min_words) {
-            if (!documents_.count(word)) {
-                for (const auto& [words, id] : documents_)
-                    if (word == words)
-                        for (const auto& id_new : id)
-                            id_to_rel.erase(id_new);
+            if (!word_to_document_freqs_.count(word)) {
+                for (const auto& [id, freac] : word_to_document_freqs_.at(word))
+                    id_to_rel.erase(id);
             }
         };
         for (const auto& [id, relev] : id_to_rel)
@@ -165,7 +160,7 @@ int main() {
 
     const string query = ReadLine();
     for (const auto& [document_id, relevance] : search_server.FindTopDocuments(query)) {
-        cout << "{ document_id = "s << document_id << ", "
+        cout << "{ document_id = "s << document_id << ", "s
              << "relevance = "s << relevance << " }"s << endl;
     }
 }
