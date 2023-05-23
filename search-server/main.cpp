@@ -241,6 +241,191 @@ private:
     }
 };
 
+template <typename Funk>
+void RunTestImpl(const string funk_name, Funk funk) {
+   funk();
+   cerr << funk_name << " ОК"s << endl; 
+}
+
+#define RUN_TEST(func) RunTestImpl(#func, func)
+
+
+
+void Assert(bool query, const string raw_query, const string file, const string func, unsigned line, const string & hint = " "s) {
+    if (query == 0) {
+    cout << file << "("s << line << "): "s << func << ": "s;
+    cout << "ASSERT("s << raw_query << ") failed.";
+    if (!hint.empty()) {
+        cout <<" Hint: " << hint; 
+    }
+    cout << endl;
+    abort();
+    }
+
+}
+
+#define ASSERT(expr) Assert((expr), (#expr), __FILE__, __FUNCTION__, __LINE__) 
+#define ASSERT_HINT(expr, hint) Assert((expr), (#expr), __FILE__, __FUNCTION__, __LINE__, (hint))
+
+
+
+template <typename T, typename U>
+void AssertEqualImpl(const T& t, const U& u, const string& t_str, const string& u_str, const string& file,
+                     const string& func, unsigned line, const string& hint) {
+    if (t != u) {
+        cout << boolalpha;
+        cout << file << "("s << line << "): "s << func << ": "s;
+        cout << "ASSERT_EQUAL("s << t_str << ", "s << u_str << ") failed: "s;
+        cout << t << " != "s << u << "."s;
+        if (!hint.empty()) {
+            cout << " Hint: "s << hint;
+        }
+        cout << endl;
+        abort();
+    }
+}
+
+
+#define ASSERT_EQUAL(a, b) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, ""s)
+#define ASSERT_EQUAL_HINT(a, b, hint) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, (hint))
+
+// Тест провереят, что документ был успешно добавлен в базу
+void TestAddDocuments() {
+    const int doc_id = 37;
+    const string content = "my name is artem and what is yours"s;
+    const vector<int> ratings = {4, 5, 6};
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        ASSERT_HINT(((server.FindTopDocuments("my name artem"s))[0].id == 37), "problems with adding new doc"s);
+    }
+}
+
+
+// Тест проверяет, что поисковая система исключает стоп-слова при добавлении документов
+void TestExcludeStopWordsFromAddedDocumentContent() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = {1, 2, 3};
+    // Сначала убеждаемся, что поиск слова, не входящего в список стоп-слов,
+    // находит нужный документ
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.FindTopDocuments("in"s);
+        ASSERT(found_docs.size() == 1);
+        const Document& doc0 = found_docs[0];
+        ASSERT_EQUAL_HINT(doc0.id, doc_id, "Doc isn't found"s);
+    }
+
+    // Затем убеждаемся, что поиск этого же слова, входящего в список стоп-слов,
+    // возвращает пустой результат
+    {
+        SearchServer server;
+        server.SetStopWords("in the"s);
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        ASSERT_HINT((server.FindTopDocuments("in"s).empty()), "problems with using stop-words"s);
+    }
+}
+
+//проверка учёта минус-слов
+void TestEliminateMinusWordsFromAddedDocumentContent() {
+    const int doc_id = 54;
+    const string content = "i love practicum and c++ pain"s;
+    const vector<int> ratings = {5, 5, 5};
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        ASSERT_HINT((server.FindTopDocuments("-pain python"s).empty()),"problems with using minus-words"s);
+
+    }
+
+}
+
+
+//проверка правильности сортировки
+void TestSortingRel() {
+    const int doc_id1 = 12;
+    const string content1 = "hi my name is tikatika slim shady";
+    const vector<int> ratings1 = {2, 3, 4};
+
+    const int doc_id2 = 90;
+    const string content2 = "Slim shady has become eminem after his most popular album"s;
+    const vector<int> ratings2 = {2, 3, 4};
+
+    const int doc_id3 = 45;
+    const string content3 = "All i see is you words"s;
+    const vector<int> ratings3 = {2, 3, 4};
+    {
+    SearchServer server;
+    server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+    server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
+    server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+    //проверяем, что было отобрано только 2 документа из 3-х
+    auto result = server.FindTopDocuments("Eminem slim shady");
+    ASSERT(result.size() == 2);
+    //проверяем, что они находятся в нужной последовательности
+    bool isright = true;
+    for (size_t i = 0; i < result.size(); i++) {
+        if (result[i].relevance < result[i+1].relevance) {
+            isright = false;
+
+        }
+    }
+    ASSERT_HINT(isright, "sorting wrong"s);
+    
+    }
+}
+
+//Проверка правильности подсчёта рейтинга
+void TestCountingRating() {
+    SearchServer server;
+    const int doc_id1 = 12;
+    const string content1 = "hi my name is tikatika slim shady";
+    const vector<int> ratings1 = {2, 3, 4};
+    {
+    server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+    ASSERT((server.FindTopDocuments("tikatika slim shady"s))[0].rating == 3);
+
+
+    }
+}
+
+//проверка поиска по определенному статусу
+void TestStatus() {
+     const int doc_id1 = 12;
+    const string content1 = "hi my name is tikatika slim shady";
+    const vector<int> ratings1 = {2, 3, 4};
+
+    const int doc_id2 = 90;
+    const string content2 = "Slim shady has become eminem after his most popular album"s;
+    const vector<int> ratings2 = {2, 3, 4};
+
+    const int doc_id3 = 45;
+    const string content3 = "All i see is you words"s;
+    const vector<int> ratings3 = {2, 3, 4};
+    {
+        SearchServer server;
+          server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+            server.AddDocument(doc_id2, content2, DocumentStatus::BANNED, ratings2);
+              server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+
+              ASSERT((server.FindTopDocuments("hi my name"s, DocumentStatus::BANNED)).empty());
+    }
+}
+
+
+// Функция TestSearchServer является точкой входа для запуска тестов
+void TestSearchServer() {
+    RUN_TEST(TestExcludeStopWordsFromAddedDocumentContent);
+    RUN_TEST(TestAddDocuments);
+    RUN_TEST(TestEliminateMinusWordsFromAddedDocumentContent);
+    RUN_TEST(TestCountingRating);
+    RUN_TEST(TestSortingRel);
+    RUN_TEST(TestStatus);
+    
+}
+
 // ==================== для примера =========================
 
 void PrintDocument(const Document& document) {
