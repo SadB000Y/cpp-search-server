@@ -10,6 +10,7 @@
 using namespace std;
 
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
+const double COMPARE = 1e-6;
 
 string ReadLine() {
     string s;
@@ -83,7 +84,7 @@ public:
 
         sort(matched_documents.begin(), matched_documents.end(),
              [](const Document& lhs, const Document& rhs) {
-                 if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                 if (abs(lhs.relevance - rhs.relevance) < COMPARE) {
                      return lhs.rating > rhs.rating;
                  } else {
                      return lhs.relevance > rhs.relevance;
@@ -289,7 +290,6 @@ void AssertEqualImpl(const T& t, const U& u, const string& t_str, const string& 
 #define ASSERT_EQUAL(a, b) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, ""s)
 #define ASSERT_EQUAL_HINT(a, b, hint) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, (hint))
 
-// Тест провереят, что документ был успешно добавлен в базу
 void TestAddDocuments() {
     const int doc_id = 37;
     const string content = "my name is artem and what is yours"s;
@@ -297,7 +297,7 @@ void TestAddDocuments() {
     {
         SearchServer server;
         server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
-        ASSERT_HINT(((server.FindTopDocuments("my name artem"s))[0].id == 37), "problems with adding new doc"s);
+        ASSERT_HINT(((server.FindTopDocuments("my name artem"s))[0].id == 37), "Adding new document"s);
     }
 }
 
@@ -362,11 +362,11 @@ void TestSortingRel() {
     server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
     server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
     //проверяем, что было отобрано только 2 документа из 3-х
-    auto result = server.FindTopDocuments("Eminem slim shady");
+    auto result = server.FindTopDocuments("Eminem slim shady"s);
     ASSERT(result.size() == 2);
     //проверяем, что они находятся в нужной последовательности
     bool isright = true;
-    for (size_t i = 0; i < result.size(); i++) {
+    for (size_t i = 0; i < result.size() - 1; i++) {
         if (result[i].relevance < result[i+1].relevance) {
             isright = false;
 
@@ -381,19 +381,34 @@ void TestSortingRel() {
 void TestCountingRating() {
     SearchServer server;
     const int doc_id1 = 12;
-    const string content1 = "hi my name is tikatika slim shady";
+    const int doc_id2 = 23;
+    const int doc_id3 = 45;
+
+    const string content1 = "hi my name is tikatika slim shady"s;
+    const string content2 = "I've created a monster, cause nobody wants to see Marshall no more"s;
+    const string content3 = "And if you ask me to, daddy's gonna buy you a mockingbird, I'ma give you the world"s;
+
     const vector<int> ratings1 = {2, 3, 4};
+    const vector<int> ratings2 = {-2, -3, -4};
+    const vector<int> ratings3 = {2, -2, 6};
     {
     server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
-    ASSERT((server.FindTopDocuments("tikatika slim shady"s))[0].rating == 3);
+    ASSERT_HINT(((server.FindTopDocuments("tikatika slim shady"s))[0].rating == 3), "Positive ratings"s);
 
+    server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
+    ASSERT_HINT(((server.FindTopDocuments("Marshall no more"s))[0].rating == -3), "Negative ratings"s);
 
+    server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+    ASSERT_HINT(((server.FindTopDocuments("buy you a mockingbird"s))[0].rating == 2), "Mixed ratings"s);
     }
+
+
+
 }
 
 //проверка поиска по определенному статусу
 void TestStatus() {
-     const int doc_id1 = 12;
+    const int doc_id1 = 12;
     const string content1 = "hi my name is tikatika slim shady";
     const vector<int> ratings1 = {2, 3, 4};
 
@@ -402,16 +417,83 @@ void TestStatus() {
     const vector<int> ratings2 = {2, 3, 4};
 
     const int doc_id3 = 45;
-    const string content3 = "All i see is you words"s;
+    const string content3 = "Venom, (I got that) adrenaline momentum, And I'm not knowin' when I'm"s;
     const vector<int> ratings3 = {2, 3, 4};
+
+    const int doc_id4 = 69;
+    const string content4 = "You better lose yourself in the music, the moment, you own it, you better never let it go"s;
+    const vector<int> ratings4 = {2, 3, 4};    
     {
         SearchServer server;
-          server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
-            server.AddDocument(doc_id2, content2, DocumentStatus::BANNED, ratings2);
-              server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+        server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+        server.AddDocument(doc_id2, content2, DocumentStatus::BANNED, ratings2);
+        server.AddDocument(doc_id3, content3, DocumentStatus::REMOVED, ratings3);
+        server.AddDocument(doc_id4, content4, DocumentStatus::IRRELEVANT, ratings4);
 
-              ASSERT((server.FindTopDocuments("hi my name"s, DocumentStatus::BANNED)).empty());
+
+        ASSERT_HINT(((server.FindTopDocuments("hi my name"s, DocumentStatus::BANNED)).empty()), "Status - banned"s);
+        ASSERT_HINT((((server.FindTopDocuments("hi my name"s))[0].id == 12)), "Status - actual"s);
+        ASSERT_HINT((((server.FindTopDocuments("I'm venom"s, DocumentStatus::REMOVED))[0].id == 45)), "Status - removed"s);
+        ASSERT_HINT(((server.FindTopDocuments("lose yourself in the music"s, DocumentStatus::IRRELEVANT))[0].id == 69), "Status - irrelevant"s);
     }
+}
+
+void TestRel() { /// Проверка правильного вычисления релевантности 
+    const int doc_id1 = 12;
+    const string content1 = "hi my name is tikatika slim shady";
+    const vector<int> ratings1 = {2, 3, 4};
+
+    const int doc_id2 = 90;
+    const string content2 = "slim shady has become eminem after his most popular album"s;
+    const vector<int> ratings2 = {2, 3, 4};
+
+    const int doc_id3 = 45;
+    const string content3 = "Venom, I got that adrenaline momentum, And I'm not knowin' when I'm"s;
+    const vector<int> ratings3 = {2, 3, 4};
+
+{
+    SearchServer server;
+    server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+    server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
+    server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+
+    // правильные значения релевантности посчитаны вручную
+    ASSERT_HINT((std::abs((server.FindTopDocuments("tikatika"))[0].relevance - 0.15694461) < diff), "One word in one doc"s); 
+    ASSERT_HINT((std::abs((server.FindTopDocuments("adrenaline momentum"))[0].relevance - 0.09155102) < diff), "Two words in one doc"s); 
+    ASSERT_HINT((std::abs((server.FindTopDocuments("slim shady"))[0].relevance - 0.11584717) < diff), "Two words in two docs"s); 
+
+        
+}
+}
+
+void TestPredicat() {
+    const int doc_id1 = 12;
+    const string content1 = "hi my name is tikatika slim shady";
+    const vector<int> ratings1 = {10, 10, 10};
+
+    const int doc_id2 = 90;
+    const string content2 = "slim shady has become eminem after his most popular album"s;
+    const vector<int> ratings2 = {2, 3, 4};
+
+    const int doc_id3 = 45;
+    const string content3 = "venom (I got that) adrenaline momentum, And I'm not knowin' when I'm"s;
+    const vector<int> ratings3 = {2, 3, 4};
+
+    const int doc_id4 = 69;
+    const string content4 = "You better lose yourself in the music, the moment, you own it, you better never let it go"s;
+    const vector<int> ratings4 = {2, 3, 4};    
+{
+    SearchServer server;
+    server.AddDocument(doc_id1, content1, DocumentStatus::BANNED, ratings1);
+    server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
+    server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+    server.AddDocument(doc_id4, content4, DocumentStatus::IRRELEVANT, ratings4);
+
+    ASSERT_HINT((server.FindTopDocuments("lose yourself"s, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::IRRELEVANT; })[0].id == 69), "One doc for status"s);
+    ASSERT_HINT((server.FindTopDocuments("slim shady"s, [](int document_id, DocumentStatus status, int rating) { return rating == 10; })[0].id == 12), "Using ratings"s);
+    ASSERT_HINT((server.FindTopDocuments("venom"s, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; })[0].id == 45), "sorting after selection by predicate"s);
+    ASSERT_HINT((server.FindTopDocuments("slim shady"s, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::REMOVED; }).empty()),"non-existent status"s);
+}
 }
 
 
@@ -423,10 +505,11 @@ void TestSearchServer() {
     RUN_TEST(TestCountingRating);
     RUN_TEST(TestSortingRel);
     RUN_TEST(TestStatus);
-    
+    RUN_TEST(TestRel);
+    RUN_TEST(TestPredicat);
 }
 
-// ==================== для примера =========================
+// --------- Окончание модульных тестов поисковой системы -----------// ==================== для примера =========================
 
 void PrintDocument(const Document& document) {
     cout << "{ "s
