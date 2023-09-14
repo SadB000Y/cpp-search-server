@@ -1,6 +1,5 @@
 #include "read_input_functions.h"
 #include <string>
-#include <vector>
 #include <set>
 #include <iostream>
 
